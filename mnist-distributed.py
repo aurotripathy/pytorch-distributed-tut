@@ -15,10 +15,9 @@ from model import ConvNet
 
 
 def train(gpu, args):
-    rank = args.nr * args.gpus + gpu
-    print('>>>>>>>>>local rank', rank, 'gpu', gpu)
+    rank = args.node_rank * args.gpus + gpu
     dist.init_process_group(backend='nccl', init_method='env://', world_size=args.world_size, rank=rank)
-    print('>>>>>>>> init_process_group complete')
+    print('>>>>>>>>>', 'local rank', rank, 'gpu', gpu, 'completed init_process_group')
     torch.manual_seed(0)
     model = ConvNet()
     torch.cuda.set_device(gpu)
@@ -28,7 +27,7 @@ def train(gpu, args):
     criterion = nn.CrossEntropyLoss().cuda(gpu)
     optimizer = torch.optim.SGD(model.parameters(), 1e-4)
     # Wrap the model
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    ddp_model = DDP(model, device_ids=[gpu])
     # Data loading code
     train_dataset = torchvision.datasets.MNIST(root='./data',
                                                train=True,
@@ -48,26 +47,33 @@ def train(gpu, args):
                                                train=False,
                                                transform=transforms.ToTensor(),
                                                download=True)
-    val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset,
-                                                                    num_replicas=args.world_size,
-                                                                    rank=rank)
+    # val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset,
+    #                                                                 num_replicas=args.world_size,
+    #                                                                 rank=rank)
+    # val_loader = torch.utils.data.DataLoader(dataset=val_dataset,
+    #                                            batch_size=batch_size,
+    #                                            shuffle=False,
+    #                                            num_workers=0,
+    #                                            pin_memory=True,
+    #                                            sampler=val_sampler)
     val_loader = torch.utils.data.DataLoader(dataset=val_dataset,
                                                batch_size=batch_size,
                                                shuffle=False,
                                                num_workers=0,
-                                               pin_memory=True,
-                                               sampler=val_sampler)
+                                               pin_memory=True)
 
+
+    
     start = datetime.now()
     total_train_step = len(train_loader)
     total_val_step = len(val_loader)
     for epoch in range(args.epochs):
-        model.train()  # train mode
+        ddp_model.train()  # train mode
         for i, (images, labels) in enumerate(train_loader):
             images = images.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
             # Forward pass
-            outputs = model(images)
+            outputs = ddp_model(images)
             loss = criterion(outputs, labels)
 
             # Backward and optimize
@@ -77,12 +83,12 @@ def train(gpu, args):
             if (i + 1) % 10 == 0 and gpu == 0:
                 print('Epoch [{}/{}], Step [{}/{}], Train Loss: {:.4f}'.format(epoch + 1, args.epochs, i + 1, total_train_step,
                                                                          loss.item()))
-        model.eval() # evaluate mode
+        ddp_model.eval() # evaluate mode
         correct = 0
         with torch.no_grad():
             for i, (images, labels) in enumerate(val_loader):
                 images, labels = images.cuda(), labels.cuda()
-                outputs = model(images)
+                outputs = ddp_model(images)
                 val_loss = criterion(outputs, labels)
                 pred = outputs.argmax(dim=1, keepdim=True)  # get the index of the max 
                 correct += pred.eq(labels.view_as(pred)).sum().item()
@@ -92,8 +98,8 @@ def train(gpu, args):
 
         if gpu == 0:
             print('\nValidation Accuracy: {}/{} ({:.0f}%)\n'.format(
-                correct, len(val_sampler),
-                100. * correct / len(val_sampler)))
+                correct, len(val_dataset),
+                100. * correct / len(val_dataset)))
     if gpu == 0:
         print("Training complete in: " + str(datetime.now() - start))
 
@@ -103,9 +109,9 @@ def main():
                         help='number of data loading workers (default: 4)')
     parser.add_argument('-g', '--gpus', default=8, type=int,
                         help='number of gpus per node')
-    parser.add_argument('-nr', '--nr', default=0, type=int,
+    parser.add_argument('-nr', '--node-rank', default=0, type=int,
                         help='ranking within the nodes')
-    parser.add_argument('--epochs', default=50, type=int, metavar='N',
+    parser.add_argument('--epochs', default=10, type=int, metavar='N',
                         help='number of total epochs to run')
     args = parser.parse_args()
     print(args)
