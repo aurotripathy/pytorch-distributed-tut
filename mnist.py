@@ -6,9 +6,8 @@ import torchvision
 import torchvision.transforms as transforms
 import torch
 import torch.nn as nn
-import torch.distributed as dist
 from model import ConvNet
-import torch.nn.functional as F
+
 
 def train(gpu, args):
     model = ConvNet()
