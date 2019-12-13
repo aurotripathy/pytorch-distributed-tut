@@ -90,10 +90,10 @@ def train(gpu, args):
                     print('Epoch [{}/{}], Step [{}/{}], Val Loss: {:.4f}'.format(epoch + 1, args.epochs, i + 1, total_val_step,
                                                                              val_loss.item()))
 
-
-        print('\nValidation Accuracy: {}/{} ({:.0f}%)\n'.format(
-            correct, len(val_loader.dataset),
-            100. * correct / len(val_loader.dataset)))
+        if gpu == 0:
+            print('\nValidation Accuracy: {}/{} ({:.0f}%)\n'.format(
+                correct, len(val_sampler),
+                100. * correct / len(val_sampler)))
     if gpu == 0:
         print("Training complete in: " + str(datetime.now() - start))
 
@@ -105,7 +105,7 @@ def main():
                         help='number of gpus per node')
     parser.add_argument('-nr', '--nr', default=0, type=int,
                         help='ranking within the nodes')
-    parser.add_argument('--epochs', default=15, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
     args = parser.parse_args()
     print(args)
