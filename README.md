@@ -1,4 +1,4 @@
-### A Tutorial of Distributed PyTorch
+### A 'Hello World' Tutorial of DistributedDataParallel PyTorch
 
 This highlights the use of the PyTorch DistributedDataParallel library and is expected to supplement https://pytorch.org/tutorials/intermediate/ddp_tutorial.html 
 
